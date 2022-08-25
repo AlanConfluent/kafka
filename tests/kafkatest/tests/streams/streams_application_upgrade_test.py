@@ -18,17 +18,18 @@ from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
 from ducktape.tests.test import Test
 from ducktape.utils.util import wait_until
-from kafkatest.services.kafka import KafkaService
+from kafkatest.services.kafka import KafkaService, quorum
 from kafkatest.services.streams import StreamsSmokeTestDriverService, StreamsSmokeTestJobRunnerService
 from kafkatest.services.zookeeper import ZookeeperService
 from kafkatest.version import LATEST_2_2, LATEST_2_3, LATEST_2_4, LATEST_2_5, LATEST_2_6, LATEST_2_7, LATEST_2_8, \
-  LATEST_3_0, LATEST_3_1, LATEST_3_2, DEV_VERSION, KafkaVersion
+  LATEST_3_0, LATEST_3_1, LATEST_3_2, LATEST_3_3, DEV_VERSION, KafkaVersion
 
 smoke_test_versions = [str(LATEST_2_2), str(LATEST_2_3), str(LATEST_2_4),
                        str(LATEST_2_5), str(LATEST_2_6), str(LATEST_2_7),
                        str(LATEST_2_8), str(LATEST_3_0), str(LATEST_3_1),
                        str(LATEST_3_2)]
 dev_version = [str(DEV_VERSION)]
+kraft_compatible_versions = [str(LATEST_2_8), str(LATEST_3_0), str(LATEST_3_1), str(LATEST_3_2), str(LATEST_3_3)]
 
 class StreamsUpgradeTest(Test):
     """
@@ -56,8 +57,9 @@ class StreamsUpgradeTest(Test):
             self.kafka.start_node(node)
 
     @cluster(num_nodes=6)
-    @matrix(from_version=smoke_test_versions, to_version=dev_version, bounce_type=["full"])
-    def test_app_upgrade(self, from_version, to_version, bounce_type):
+    @matrix(from_version=smoke_test_versions, to_version=dev_version, bounce_type=["full"], metadata_quorum=[quorum.zk])
+    @matrix(from_version=kraft_compatible_versions, to_version=dev_version, bounce_type=["full"], metadata_quorum=[quorum.remote_kraft])
+    def test_app_upgrade(self, from_version, to_version, bounce_type, metadata_quorum):
         """
         Starts 3 KafkaStreams instances with <old_version>, and upgrades one-by-one to <new_version>
         """
@@ -65,8 +67,13 @@ class StreamsUpgradeTest(Test):
         if from_version == to_version:
             return
 
-        self.zk = ZookeeperService(self.test_context, num_nodes=1)
-        self.zk.start()
+        self.zk = (
+            ZookeeperService(self.test_context, num_nodes=1)
+            if quorum.for_test(self.test_context) == quorum.zk
+            else None
+        )
+        if self.zk:
+          self.zk.start()
 
         self.kafka = KafkaService(self.test_context, num_nodes=1, zk=self.zk, topics={
             'echo' : { 'partitions': 5, 'replication-factor': 1 },

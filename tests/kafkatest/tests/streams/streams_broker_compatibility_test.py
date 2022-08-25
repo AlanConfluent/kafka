@@ -13,17 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ducktape.mark import parametrize
+from ducktape.mark import parametrize, ignore
 from ducktape.mark.resource import cluster
 from ducktape.tests.test import Test
 from ducktape.utils.util import wait_until
-from kafkatest.services.kafka import KafkaService
+from kafkatest.services.kafka import KafkaService, quorum
 from kafkatest.services.streams import StreamsBrokerCompatibilityService
 from kafkatest.services.verifiable_consumer import VerifiableConsumer
 from kafkatest.services.zookeeper import ZookeeperService
 from kafkatest.version import LATEST_0_11_0, LATEST_0_10_2, LATEST_0_10_1, LATEST_0_10_0, LATEST_1_0, LATEST_1_1, \
     LATEST_2_0, LATEST_2_1, LATEST_2_2, LATEST_2_3, LATEST_2_4, LATEST_2_5, LATEST_2_6, LATEST_2_7, LATEST_2_8, \
-    LATEST_3_0, LATEST_3_1, LATEST_3_2, KafkaVersion
+    LATEST_3_0, LATEST_3_1, LATEST_3_2, LATEST_3_3, KafkaVersion
 
 
 class StreamsBrokerCompatibility(Test):
@@ -41,7 +41,11 @@ class StreamsBrokerCompatibility(Test):
 
     def __init__(self, test_context):
         super(StreamsBrokerCompatibility, self).__init__(test_context=test_context)
-        self.zk = ZookeeperService(test_context, num_nodes=1)
+        self.zk = (
+            ZookeeperService(self.test_context, num_nodes=1)
+            if quorum.for_test(self.test_context) == quorum.zk
+            else None
+        )
         self.kafka = KafkaService(test_context,
                                   num_nodes=1,
                                   zk=self.zk,
@@ -60,26 +64,28 @@ class StreamsBrokerCompatibility(Test):
                                            "stream-broker-compatibility-verify-consumer")
 
     def setUp(self):
-        self.zk.start()
+        if self.zk:
+          self.zk.start()
 
 
     @cluster(num_nodes=4)
-    @parametrize(broker_version=str(LATEST_3_2))
-    @parametrize(broker_version=str(LATEST_3_1))
-    @parametrize(broker_version=str(LATEST_3_0))
-    @parametrize(broker_version=str(LATEST_2_8))
-    @parametrize(broker_version=str(LATEST_2_7))
-    @parametrize(broker_version=str(LATEST_2_6))
-    @parametrize(broker_version=str(LATEST_2_5))
-    @parametrize(broker_version=str(LATEST_2_4))
-    @parametrize(broker_version=str(LATEST_2_3))
-    @parametrize(broker_version=str(LATEST_2_2))
-    @parametrize(broker_version=str(LATEST_2_1))
-    @parametrize(broker_version=str(LATEST_2_0))
-    @parametrize(broker_version=str(LATEST_1_1))
-    @parametrize(broker_version=str(LATEST_1_0))
-    @parametrize(broker_version=str(LATEST_0_11_0))
-    def test_compatible_brokers_eos_disabled(self, broker_version):
+    @parametrize(broker_version=str(LATEST_3_2), metadata_quorum=quorum.remote_kraft)
+#     @parametrize(broker_version=str(LATEST_3_2), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_3_1), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_3_0), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_8), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_7), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_6), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_5), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_4), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_3), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_2), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_1), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_2_0), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_1_1), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_1_0), metadata_quorum=quorum.zk)
+#     @parametrize(broker_version=str(LATEST_0_11_0), metadata_quorum=quorum.zk)
+    def test_compatible_brokers_eos_disabled(self, broker_version, metadata_quorum):
         self.kafka.set_version(KafkaVersion(broker_version))
         self.kafka.start()
 
@@ -95,23 +101,24 @@ class StreamsBrokerCompatibility(Test):
         self.consumer.stop()
         self.kafka.stop()
 
+    @ignore
     @cluster(num_nodes=4)
-    @parametrize(broker_version=str(LATEST_3_2))
-    @parametrize(broker_version=str(LATEST_3_1))
-    @parametrize(broker_version=str(LATEST_3_0))
-    @parametrize(broker_version=str(LATEST_2_8))
-    @parametrize(broker_version=str(LATEST_2_7))
-    @parametrize(broker_version=str(LATEST_2_6))
-    @parametrize(broker_version=str(LATEST_2_5))
-    @parametrize(broker_version=str(LATEST_2_4))
-    @parametrize(broker_version=str(LATEST_2_3))
-    @parametrize(broker_version=str(LATEST_2_2))
-    @parametrize(broker_version=str(LATEST_2_1))
-    @parametrize(broker_version=str(LATEST_2_0))
-    @parametrize(broker_version=str(LATEST_1_1))
-    @parametrize(broker_version=str(LATEST_1_0))
-    @parametrize(broker_version=str(LATEST_0_11_0))
-    def test_compatible_brokers_eos_alpha_enabled(self, broker_version):
+    @parametrize(broker_version=str(LATEST_3_2), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_3_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_3_0), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_8), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_7), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_6), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_5), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_4), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_3), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_2), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_0), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_1_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_1_0), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_0_11_0), metadata_quorum=quorum.zk)
+    def test_compatible_brokers_eos_alpha_enabled(self, broker_version, metadata_quorum):
         self.kafka.set_version(KafkaVersion(broker_version))
         self.kafka.start()
 
@@ -127,15 +134,16 @@ class StreamsBrokerCompatibility(Test):
         self.consumer.stop()
         self.kafka.stop()
 
+    @ignore
     @cluster(num_nodes=4)
-    @parametrize(broker_version=str(LATEST_3_2))
-    @parametrize(broker_version=str(LATEST_3_1))
-    @parametrize(broker_version=str(LATEST_3_0))
-    @parametrize(broker_version=str(LATEST_2_8))
-    @parametrize(broker_version=str(LATEST_2_7))
-    @parametrize(broker_version=str(LATEST_2_6))
-    @parametrize(broker_version=str(LATEST_2_5))
-    def test_compatible_brokers_eos_v2_enabled(self, broker_version):
+    @parametrize(broker_version=str(LATEST_3_2), metadata_quorum=quorum.remote_kraft)
+    @parametrize(broker_version=str(LATEST_3_1), metadata_quorum=quorum.remote_kraft)
+    @parametrize(broker_version=str(LATEST_3_0), metadata_quorum=quorum.remote_kraft)
+    @parametrize(broker_version=str(LATEST_2_8), metadata_quorum=quorum.remote_kraft)
+    @parametrize(broker_version=str(LATEST_2_7), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_6), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_5), metadata_quorum=quorum.zk)
+    def test_compatible_brokers_eos_v2_enabled(self, broker_version, metadata_quorum):
         self.kafka.set_version(KafkaVersion(broker_version))
         self.kafka.start()
 
@@ -151,11 +159,12 @@ class StreamsBrokerCompatibility(Test):
         self.consumer.stop()
         self.kafka.stop()
 
+    @ignore
     @cluster(num_nodes=4)
-    @parametrize(broker_version=str(LATEST_0_10_2))
-    @parametrize(broker_version=str(LATEST_0_10_1))
-    @parametrize(broker_version=str(LATEST_0_10_0))
-    def test_fail_fast_on_incompatible_brokers(self, broker_version):
+    @parametrize(broker_version=str(LATEST_0_10_2), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_0_10_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_0_10_0), metadata_quorum=quorum.zk)
+    def test_fail_fast_on_incompatible_brokers(self, broker_version, metadata_quorum):
         self.kafka.set_version(KafkaVersion(broker_version))
         self.kafka.start()
 
@@ -169,16 +178,17 @@ class StreamsBrokerCompatibility(Test):
 
         self.kafka.stop()
 
+    @ignore
     @cluster(num_nodes=4)
-    @parametrize(broker_version=str(LATEST_2_4))
-    @parametrize(broker_version=str(LATEST_2_3))
-    @parametrize(broker_version=str(LATEST_2_2))
-    @parametrize(broker_version=str(LATEST_2_1))
-    @parametrize(broker_version=str(LATEST_2_0))
-    @parametrize(broker_version=str(LATEST_1_1))
-    @parametrize(broker_version=str(LATEST_1_0))
-    @parametrize(broker_version=str(LATEST_0_11_0))
-    def test_fail_fast_on_incompatible_brokers_if_eos_v2_enabled(self, broker_version):
+    @parametrize(broker_version=str(LATEST_2_4), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_3), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_2), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_2_0), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_1_1), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_1_0), metadata_quorum=quorum.zk)
+    @parametrize(broker_version=str(LATEST_0_11_0), metadata_quorum=quorum.zk)
+    def test_fail_fast_on_incompatible_brokers_if_eos_v2_enabled(self, broker_version, metadata_quorum):
         self.kafka.set_version(KafkaVersion(broker_version))
         self.kafka.start()
 

@@ -19,14 +19,14 @@ from ducktape.mark import matrix, ignore
 from ducktape.mark.resource import cluster
 from ducktape.tests.test import Test
 from ducktape.utils.util import wait_until
-from kafkatest.services.kafka import KafkaService
+from kafkatest.services.kafka import KafkaService, quorum
 from kafkatest.services.streams import StreamsSmokeTestDriverService, StreamsSmokeTestJobRunnerService, \
     StreamsUpgradeTestJobRunnerService
 from kafkatest.services.zookeeper import ZookeeperService
 from kafkatest.tests.streams.utils import extract_generation_from_logs, extract_generation_id
 from kafkatest.version import LATEST_0_10_0, LATEST_0_10_1, LATEST_0_10_2, LATEST_0_11_0, LATEST_1_0, LATEST_1_1, \
     LATEST_2_0, LATEST_2_1, LATEST_2_2, LATEST_2_3, LATEST_2_4, LATEST_2_5, LATEST_2_6, LATEST_2_7, LATEST_2_8, \
-    LATEST_3_0, LATEST_3_1, LATEST_3_2, DEV_BRANCH, DEV_VERSION, KafkaVersion
+    LATEST_3_0, LATEST_3_1, LATEST_3_2, LATEST_3_3, DEV_BRANCH, DEV_VERSION, KafkaVersion
 
 # broker 0.10.0 is not compatible with newer Kafka Streams versions
 # broker 0.10.1 and 0.10.2 do not support headers, as required by suppress() (since v2.2.1)
@@ -40,6 +40,8 @@ metadata_1_versions = [str(LATEST_0_10_0)]
 metadata_2_versions = [str(LATEST_0_10_1), str(LATEST_0_10_2), str(LATEST_0_11_0), str(LATEST_1_0), str(LATEST_1_1)]
 fk_join_versions = [str(LATEST_2_4), str(LATEST_2_5), str(LATEST_2_6), str(LATEST_2_7), str(LATEST_2_8), 
                     str(LATEST_3_0), str(LATEST_3_1), str(LATEST_3_2)]
+
+kraft_compatible_versions = [str(LATEST_2_8), str(LATEST_3_0), str(LATEST_3_1), str(LATEST_3_2), str(LATEST_3_3)]
 
 """
 After each release one should first check that the released version has been uploaded to 
@@ -142,8 +144,13 @@ class StreamsUpgradeTest(Test):
         }
 
         # Setup phase
-        self.zk = ZookeeperService(self.test_context, num_nodes=1)
-        self.zk.start()
+        self.zk = (
+            ZookeeperService(self.test_context, num_nodes=1)
+            if quorum.for_test(self.test_context) == quorum.zk
+            else None
+        )
+        if self.zk:
+          self.zk.start()
 
         # number of nodes needs to be >= 3 for the smoke test
         self.kafka = KafkaService(self.test_context, num_nodes=self.num_kafka_nodes,
@@ -195,10 +202,11 @@ class StreamsUpgradeTest(Test):
         processor.node.account.ssh_capture("grep SMOKE-TEST-CLIENT-CLOSED %s" % processor.STDOUT_FILE, allow_fail=False)
 
     @cluster(num_nodes=6)
-    @matrix(from_version=metadata_1_versions, to_version=[str(DEV_VERSION)])
-    @matrix(from_version=metadata_2_versions, to_version=[str(DEV_VERSION)])
-    @matrix(from_version=fk_join_versions, to_version=[str(DEV_VERSION)])
-    def test_rolling_upgrade_with_2_bounces(self, from_version, to_version):
+    @matrix(from_version=metadata_1_versions, to_version=[str(DEV_VERSION)], metadata_quorum=[quorum.remote_kraft])
+    @matrix(from_version=metadata_2_versions, to_version=[str(DEV_VERSION)], metadata_quorum=[quorum.remote_kraft])
+    @matrix(from_version=fk_join_versions, to_version=[str(DEV_VERSION)], metadata_quorum=[quorum.remote_kraft])
+    @matrix(from_version=kraft_compatible_versions, to_version=[str(DEV_VERSION)], metadata_quorum=[quorum.remote_kraft])
+    def test_rolling_upgrade_with_2_bounces(self, from_version, to_version, metadata_quorum):
         """
         This test verifies that the cluster successfully upgrades despite changes in the metadata and FK
         join protocols.
@@ -206,8 +214,13 @@ class StreamsUpgradeTest(Test):
         Starts 3 KafkaStreams instances with version <from_version> and upgrades one-by-one to <to_version>
         """
 
-        self.zk = ZookeeperService(self.test_context, num_nodes=1)
-        self.zk.start()
+        self.zk = (
+            ZookeeperService(self.test_context, num_nodes=1)
+            if quorum.for_test(self.test_context) == quorum.zk
+            else None
+        )
+        if self.zk:
+          self.zk.start()
 
         self.kafka = KafkaService(self.test_context, num_nodes=1, zk=self.zk, topics=self.topics)
         self.kafka.start()
@@ -252,13 +265,19 @@ class StreamsUpgradeTest(Test):
                                    err_msg="Never saw output 'UPGRADE-TEST-CLIENT-CLOSED' on" + str(node.account))
 
     @cluster(num_nodes=6)
-    def test_version_probing_upgrade(self):
+    @matrix(metadata_quorum=[quorum.remote_kraft])
+    def test_version_probing_upgrade(self, metadata_quorum):
         """
         Starts 3 KafkaStreams instances, and upgrades one-by-one to "future version"
         """
 
-        self.zk = ZookeeperService(self.test_context, num_nodes=1)
-        self.zk.start()
+        self.zk = (
+            ZookeeperService(self.test_context, num_nodes=1)
+            if quorum.for_test(self.test_context) == quorum.zk
+            else None
+        )
+        if self.zk:
+          self.zk.start()
 
         self.kafka = KafkaService(self.test_context, num_nodes=1, zk=self.zk, topics=self.topics)
         self.kafka.start()
